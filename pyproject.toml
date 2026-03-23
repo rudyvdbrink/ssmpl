@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "smart_sampling"
+version = "0.1.0"
+description = "Building recognition package"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "numpy",
+    "boto3",
+    "dotenv==0.9.9",
+    "torch",
+    "pandas",
+    "rasterio",
+    "geopandas",
+    "matplotlib",
+    "seaborn",
+    "albumentations",
+    "timm",
+    "shapely",
+    "opencv-python-headless",
+    "scikit-learn",
+    "scikit-image",
+    "scipy",
+    "requests",
+    "segmentation-models-pytorch",
+    "torchmetrics",
+    "tqdm"
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
