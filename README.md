@@ -3,13 +3,27 @@
 Repository for training a segmentation model on satellite / aerial images as part of the surveillance of antimalarial resistance in Ghana II initiative. This is a collaborative partnership between the [Bernhard Nocht Institute for Tropical Medicine](https://www.bnitm.de/en) (Hamburg, Germany) and the [Kumasi Center for Collaborative Research](https://kccr-ghana.org) (Kumasi, Ghana). Data in the target region is graciously provided by the [European Space Agency](https://www.esa.int/).
   
 
-The project seeks to improve malaria prevalence estimates in rural Western Africa by combining remote sensing–driven household mapping with comprehensive parasite detection. This repository is a placeholder until the code for model development is made public. This code enables the development and evaluation of an instance segmentation pipeline that identifies and draws polygons of individual buildings from high resolution satellite and aerial imagery, for the purposes of household mapping. 
+The project seeks to improve malaria prevalence estimates in rural Western Africa by combining remote sensing–driven household mapping with comprehensive parasite detection. This repository contains code for the development and evaluation of an instance segmentation pipeline that identifies and draws polygons of individual buildings from high resolution satellite and aerial imagery, for the purposes of household mapping. 
 
+If you are looking for a comprehensive intro, try the [notebooks](#notebooks). If you're looking for the code to reproduce the full training routine, look in the [scripts](/scripts/) directory. 
 
 <img src="./public/accra_preds.png" alt="Example Image"/>
 
+--- 
+# Table of Contents
+
+- [Quick Start](#quick-start)
+- [Data](#data)
+- [Model](#model)
+  - [Architecture](#architecture)
+  - [Training Routine](#training-routine)
+  - [Performance on RAMP Dataset](#performance-on-ramp-dataset)
+  - [Performance on ESA Dataset](#performance-on-esa-dataset)
+- [Notebooks](#notebooks)
+- [Project structure](#project-structure)
+
 ---
-# Quick start
+# Quick Start
 
 Base installation:
 
@@ -38,50 +52,42 @@ Place this file in the root directory for it to take effect. This is only necess
 
 --- 
 
-# Notebooks
 
-This repository comes with a number of notebooks to document steps, from loading the data to training a model and making new predictions. The notebooks are structured as follows:
 
-| Notebook | Description |
-| :--- | :--- |
-| [0_ramp_intro_and_pull_data.ipynb](notebooks/0_ramp_intro_and_pull_data.ipynb) | General introduction and data download instructions. |
-| [1_ramp_raw_data_check.ipynb](notebooks/1_ramp_raw_data_check.ipynb) | Initial inspection of random images and footprint overlays. |
-| [2_ramp_color_contrast_correction.ipynb](notebooks/2_ramp_color_contrast_correction.ipynb) | Demonstration of color correction and CLAHE preprocessing. |
-| [3_ramp_augmentation_plots.ipynb](notebooks/3_ramp_augmentation_plots.ipynb) | Visualization of image augmentation techniques used for training. |
-| [4_ramp_data_loader.ipynb](notebooks/4_ramp_data_loader.ipynb) | Explanation of data loading and file matching logic. |
-| [5_ramp_train_test_split.ipynb](notebooks/5_ramp_train_test_split.ipynb) | Illustration of the spatial train/val/test splitting strategy. |
-| [6a_ramp_unet_model_encoder.ipynb](notebooks/6a_ramp_unet_model_encoder.ipynb) | Deep dive into the ConvNeXt encoder architecture. |
-| [6b_ramp_unet_model_decoder.ipynb](notebooks/6b_ramp_unet_model_decoder.ipynb) | Deep dive into the U-Net decoder and skip connections. |
-| [7_ramp_model_training.ipynb](notebooks/7_ramp_model_training.ipynb) | Setup and execution of the model training pipeline. |
-| [8_ramp_post_processing.ipynb](notebooks/8_ramp_post_processing.ipynb) | Post-processing steps: probability maps to instance polygons. |
-| [9_ramp_model_evaluation.ipynb](notebooks/9_ramp_model_evaluation.ipynb) | Evaluating the model, and making predictions for new data. |
-| [10_ramp_end_to_end.ipynb](notebooks/10_ramp_end_to_end.ipynb) | Syntax examples for full end-to-end model training, evaluation and prediction. |
---- 
+# Data
 
-# Winning Model Performance
+Three data sources are used:
 
-### Model ID
-- 20260202-151141
+- **RAMP**
 
-### Semantic segmentation metrics on the test set:
-- Accuracy: 0.941
-- Balanced Accuracy: 0.863
-- Precision: 0.768
-- Recall: 0.759
+This dataset comprises a set of images + labels from the [replicable AI for microplanning](https://staging.source.coop/ramp/ramp) initiative. Imagery is from 22 different locations, with roughly 100k tiles and 1.27M building instances.
 
-### Instance segmentation metrics on the test set:
-- mAP@0.5IoU: 0.610
-- Accuracy: 0.504
-- Precision: 0.639
-- Recall: 0.705
+<img src="./public/RAMP_locations.png" alt="Locations" width="500"/>
 
-### Example segmentations:
+For more information, see [here](https://rampml.global/).
 
-<img src="./public/model_predictions_plot.png" alt="Example Image"/>
+- **Maxar**
 
-### Notes on winning model architecture and training:
+High resolution satellite imagery released under CC-BY-NC licence by Maxar. You can view and download the image [here](https://map.openaerialmap.org/#/-0.24169921874999997,5.68158368342113,12/square/0333313333230/5ea08d22411bed000568039c?_k=2mghsg). 
 
-- Design: **U-net architecture**
+This imagery is does not come with labels, but is used in self-learning (pseudo label generation).
+ 
+
+- **ESA / Airbus**
+
+The European Space Agency has kindly provided recent imagery from the Pléiades and Pléiades Neo satellite constellations, specifcially in the target region. 
+
+This imagery is used for prediction (the target regions), self-learning, validation, and testing.  
+
+<img src="./public/areas_plot.png" alt="Locations" width="500"/>
+
+---
+
+# Model
+
+## Architecture
+
+- **U-net architecture**
 
 ```
 ENCODER (ConvNeXt)                                   DECODER (Upsampling)
@@ -109,39 +115,75 @@ Stage 4: f4 (H/32 x W/32) ------- [Bottleneck] --------------/
 - Decoder: The decoder progressively upsamples the features back to the original image resolution. It uses standard skip connections from the encoder for the lower resolutions. Notably, the final upsampling layer differs from a standard U-Net; it receives the original input image as a skip connection to help refine the final full-resolution output. This is because ConvNeXt applies a patching step in its stem layer that down-samples the input directly to stride 4. 
 - Output: A final 1x1 convolution layer projects the upsampled features to the desired number of classes (in this case 1, just building instances).
 
-**Training**:
+## Training Routine
 
-- The primary script for training is [Train.py](./scripts/train.py). This trains a base model on the RAMP dataset (see below).
-- The primary script for finetuning is [Finetune.py](./scripts/finetune.py). This adapts the base model and trains it further on proprietary data from the European Space Agency.
-- Pipeline Configuration: The process is governed by a PipelineConfig object that centralizes all settings, including data paths, spatial splitting strategies (e.g., training splits by geographical location), and hyperparameters.
-- Data processing steps: the fllowing techniques are applied in training: Color Correction, Contrast Enhancement (CLAHE), and mask erosion.
-- Training Strategy: Training is conducted in two phases. 1) The model is initialized with random skip and decoder weights. The encoder is initialized with ImageNet pre-trained weights, and subsequently frozen. The decoder and skip connections are trained with an adaptive learning rate. 2) In the second phase the full model is unfrozen and trained with a lower learning rate.
-- Finetuning is conducted in one phase with a fully unfrozen model and an even lower learning rate.
-- Loss Calculation: Training/finetuing use a composite loss function (The linear combination of weighted binary cross-entropy and focal tversky loss.). The weighting of cross-entropy is done with pixel-wise weights that up-weight parts of the image near building boundaries. Pixel weights are normalized on a per-batch basis to ensure images that contain few buildings don't under-weight areas with no buildings. 
-- Optimization: A ReduceLROnPlateau scheduler lowerers the learning rate if validation performance stalls.
-- Training Monitoring: The pipeline automatically tracks the best validation
-loss, saves model checkpoints and logs, and identifies the best-performing model file at the end.
+In addition to pre-training of the encoder, the training of the model proceeded in three stages.
+- [Training](./scripts/train.py) the model on the RAMP dataset. Training itself was comprised of two sub-stages: 
+  - Training the decoder and skip connections, while the encoder weights were kept frozen.
+  - Training the full model with unfrozen weights.
+- [Finetuning](./scripts/finetune.py) the model on hand-labeled (ESA supplied) data in the target region. 
+- [Self-learning](./scripts/self_learning.py) using pseudo-labels generated with the fine-tuned model. This loop involved several iterations of progressive fine-tuning and label generation. 
+
+<img src="./public/training_schedule.png" alt="Training Routine" width="300"/>
+
+
+## Performance on RAMP Dataset
+
+### Model ID
+- 20260202-151141
+
+### Semantic segmentation metrics on the test set:
+- Accuracy: 0.941
+- Balanced Accuracy: 0.863
+- Precision: 0.768
+- Recall: 0.759
+
+### Instance segmentation metrics on the test set:
+- mAP@0.5IoU: 0.610
+- Accuracy: 0.504
+- Precision: 0.639
+- Recall: 0.705
+
+### Example segmentations:
+
+<img src="./public/model_predictions_plot.png" alt="Example Image"/>
+
+## Performance on ESA Dataset
+
+### Semantic segmentation metrics on the test set:
+- Accuracy: 0.983
+- Balanced Accuracy: 0.900
+- Precision: 0.887
+- Recall: 0.807
+
+### Instance segmentation metrics on the test set:
+- mAP@0.5IoU: 0.670
+- Accuracy: 0.471
+- Precision: 0.564
+- Recall: 0.741
+
 
 ---
-# Data
+# Notebooks
 
-Two data sources are used:
+This repository comes with a number of notebooks to document steps, from loading the data to training a model and making new predictions. The notebooks are structured as follows:
 
-**RAMP**
+| Notebook | Description |
+| :--- | :--- |
+| [0_ramp_intro_and_pull_data.ipynb](notebooks/0_ramp_intro_and_pull_data.ipynb) | General introduction and data download instructions. |
+| [1_ramp_raw_data_check.ipynb](notebooks/1_ramp_raw_data_check.ipynb) | Initial inspection of random images and footprint overlays. |
+| [2_ramp_color_contrast_correction.ipynb](notebooks/2_ramp_color_contrast_correction.ipynb) | Demonstration of color correction and CLAHE preprocessing. |
+| [3_ramp_augmentation_plots.ipynb](notebooks/3_ramp_augmentation_plots.ipynb) | Visualization of image augmentation techniques used for training. |
+| [4_ramp_data_loader.ipynb](notebooks/4_ramp_data_loader.ipynb) | Explanation of data loading and file matching logic. |
+| [5_ramp_train_test_split.ipynb](notebooks/5_ramp_train_test_split.ipynb) | Illustration of the spatial train/val/test splitting strategy. |
+| [6a_ramp_unet_model_encoder.ipynb](notebooks/6a_ramp_unet_model_encoder.ipynb) | Deep dive into the ConvNeXt encoder architecture. |
+| [6b_ramp_unet_model_decoder.ipynb](notebooks/6b_ramp_unet_model_decoder.ipynb) | Deep dive into the U-Net decoder and skip connections. |
+| [7_ramp_model_training.ipynb](notebooks/7_ramp_model_training.ipynb) | Setup and execution of the model training pipeline. |
+| [8_ramp_post_processing.ipynb](notebooks/8_ramp_post_processing.ipynb) | Post-processing steps: probability maps to instance polygons. |
+| [9_ramp_model_evaluation.ipynb](notebooks/9_ramp_model_evaluation.ipynb) | Evaluating the model, and making predictions for new data. |
+| [10_ramp_end_to_end.ipynb](notebooks/10_ramp_end_to_end.ipynb) | Syntax examples for full end-to-end model training, evaluation and prediction. |
 
-This dataset comprises a set of images + labels from the [replicable AI for microplanning](https://staging.source.coop/ramp/ramp) initiative. You can view the images [here](https://map.openaerialmap.org/#/-0.12462615966796874,5.675775839406891,12?_k=2dpmkv). The data are high quality aerial images and corresponding building outlines.
-
-An example image and its corresponding labels:
-
-<img src="./public/example.png" alt="Example Image" width="500"/>
-
- 
-
-**ESA**
-
-The European Space Agency has kindly provided recent imagery from the Pléiades satellite constellation, specifcially in the target region. 
-
----
+--- 
 #  Project structure:
 
 ```
@@ -175,7 +217,8 @@ smart_sampling/
 │   │   ├── esa/                 # Datasets for ESA project
 │   │   │   ├── imagery/         # Raw imagery
 │   │   │   └── labels/          # Label storage
-│   │   │       ├── automatic/   # Model-generated labels
+│   │   │       ├── automatic_hard/ # Model-generated polygon labels (GeoJSON)
+│   │   │       ├── automatic_soft/ # Model-generated soft labels (probability rasters)
 │   │   │       └── manual/      # Hand-labeled annotations
 │   │   └── ...                  # Other datasets
 │   ├── unprocessed/             # Storage for imagery as supplied by airbus
@@ -192,10 +235,12 @@ smart_sampling/
 │   ├── pre_processed/           # Intermediate processed data
 │   │   └── esa/
 │   │       └── location_name/
-│   │           └── combined_rgb.tif # Mosaicked/Corrected RGB image
+│   │           ├── combined_location_name_rgb.tif     # Mosaicked/corrected RGB image
+│   │           └── combined_location_name_rgb_tta_upsampled.tif # Cached shared-grid TTA mosaic when upsampling is enabled
 │   ├── pre_inference/           # Data prepared specifically for inference
 │   │   └── esa/
 │   │       └── location_name/
+│   │           ├── tta_config.json # Geometry/configuration for TTA preprocessing
 │   │           ├── pass_0/      # TTA pass 0
 │   │           │   ├── tile_0_0.tif
 │   │           │   └── ...
@@ -209,7 +254,8 @@ smart_sampling/
 │           └── merged/          # Reconstructed full-image predictions
 │               └── model_id/
 │                   └── location_name/
-│                       └── predictions.tif
+│                       ├── location_name_merged_probs.tif
+│                       └── location_name_instances.geojson
 │
 ├── models/                      # Folder that contains fitted models (not on github)
 │   ├── 20251029-104529/         # Model ID (date-time of fit start)                
@@ -241,6 +287,9 @@ smart_sampling/
 ├── scripts/                     # High-level scripts to run training, evaluation, and plotting
 │   ├── train.py                 # Main training script
 │   ├── evaluate.py              # Main evaluation script
+│   ├── finetune.py              # Main finetuning script
+│   ├── preprocess_ESA_imagery.py  # Script for processing raw ESA imagery
+│   ├── self_learning.py         # Script for running self-learning routine
 │   └── load_model_and_plot.py   # Script to plot some example segmentations
 │
 ├── src/smart_sampling            # Main source code for model fitting and evaluation
@@ -248,40 +297,54 @@ smart_sampling/
 │   │   ├── ramp/
 │   │   │   ├── loading.py       # Functions for handling parallel S3 bucket download
 │   │   │   └── ramp_loader.py   # Classes for downloading RAMP datasets
-│   │   ├── loaders.py           # Dataloaders -> implement preprocessing / augmentation
 │   │   ├── augmentations.py     # Data augmentation (random crop, flip, etc.)
-│   │   ├── erosion.py           # Functions for reducing (and expanding) footprints
 │   │   ├── cleaning.py          # Image preprocessing functions (color and contrast)
+│   │   ├── erosion.py           # Functions for reducing (and expanding) footprints
+│   │   ├── loaders.py           # Dataloaders -> implement preprocessing / augmentation
 │   │   ├── pixel_weighting.py   # Functions for generating boundary weights
-│   │   └── splits.py            # Train / validation / test splitting
-│   ├── utils/
-│   │   ├── loading.py           # Simple image / label loading functions
-│   │   ├── model_vis.py         # Functions for plotting feature maps / kernels
-│   │   ├── logger.py            # Class to log training time / model performance
-│   │   └── paths.py             # Utilities to set directory structures
+│   │   ├── splits.py            # Train / validation / test splitting
+│   │   └── subsampling.py       # Functions for sampling data subsets
+│   ├── evaluation/
+│   │   ├── evaluation.py        # Class for model evaluation
+│   │   ├── instance_metrics_aggregate.py  # Aggregate metrics for instance segmentation
+│   │   ├── instance_metrics_map.py        # COCO metrics for instance segmentation
+│   │   └── semantic_metrics.py            # Metrics for semantic segmentation
+│   ├── finetuning/
+│   │   └── pipeline.py          # Class for end-to-end finetuning pipeline
 │   ├── models/
 │   │   ├── base.py              # Base classes for segmentation models
 │   │   ├── unet_convnext.py     # U-net with convnext backbone
 │   │   └── unet_resnet50.py     # U-net with resnet50 backbone
 │   ├── post/
-│   │   ├── threshold_masking.py           # Turns probabilities into binary / instance masks
 │   │   ├── polygonal_approximation.py     # Cleans up instance masks, and filters small buildings
+│   │   ├── threshold_masking.py           # Turns probabilities into binary / instance masks
 │   │   └── watershed.py                   # Functionality for post-processing with watershed
+│   ├── self_learning/
+│   │   ├── mosaics.py           # Functions for creating image mosaics for label generation
+│   │   ├── self_learning.py     # Core functions for the self-learning routine
+│   │   └── titration.py         # Submodule for label titration and thresholding
 │   ├── training/
 │   │   ├── loss.py              # Loss functions
 │   │   ├── pipeline.py          # Class for end-to-end training pipeline
 │   │   └── training.py          # Functionality to core to training of a model 
-│   └── evaluation/
-│       ├── evaluation.py        # Class for model evaluation
-│       ├── instance_metrics_aggregate.py  # Aggregate metrics for instance segmentation
-│       ├── instance_metrics_map.py        # COCO metrics for instance segmentation
-│       └── semantic_metrics.py            # Metrics for semantic segmentation
+│   └── utils/
+│       ├── debugger.py          # Tools to print debug metrics and log intermediate steps
+│       ├── loading.py           # Simple image / label loading functions
+│       ├── logger.py            # Class to log training time / model performance
+│       ├── model_vis.py         # Functions for plotting feature maps / kernels
+│       └── paths.py             # Utilities to set directory structures
 │
 ├── src/smart_sampling_data       # Code for handling data supplied through ESA
+│   ├── evaluation/
+│   │   ├── evaluate_area.py     # Area-level evaluation routines
+│   │   ├── evaluate_area_instance_metrics_aggregate.py # Instance metrics aggregated per area
+│   │   ├── evaluate_area_map.py # Functions to evaluate over generated maps
+│   │   └── utils.py             # ESA evaluation utilities
 │   ├── inference/
 │   │   ├── tta_inference.py              # Test Time Augmentation inference loops
 │   │   ├── tta_instance_processing.py    # Processing instances from TTA output
 │   │   ├── tta_post.py                   # Post-processing TTA predictions
+│   │   ├── tta_pseudo_labels.py          # Routine for handling pseudo-labels and generation
 │   │   └── tta_reconstruction.py         # Reconstructing full images from TTA tiles
 │   └── preprocessing/
 │       ├── preprocess_esa_imagery.py     # Preparing ESA imagery for model consumption
@@ -302,10 +365,13 @@ smart_sampling/
 │   └── test_training_functions.py
 │
 ├── public/
-│   ├── image.png                  # A picture of a cat
+│   ├── accra_preds.png            # Example predictions in Accra
+│   ├── areas_plot.png             # Map plot of study areas
 │   ├── example.png                # An example image for this readme file
+│   ├── image.png                  # A picture of a cat
 │   ├── model_predictions_plot.png # Some examples of model performance
-│   └── unet.png                   # An overview of a U-net model
+│   ├── RAMP_locations.png         # Map of RAMP dataset locations
+│   └── training_schedule.png      # Workflow diagram of the training routine
 │
 ├── .env                         # A file where you can set the project root 
 ├── requirements.txt             # Full list of dependencies
