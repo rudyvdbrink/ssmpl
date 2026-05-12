@@ -5,7 +5,7 @@ Repository for training a segmentation model on satellite / aerial images as par
 
 The project seeks to improve malaria prevalence estimates in rural Western Africa by combining remote sensing–driven household mapping with comprehensive parasite detection. This repository contains code for the development and evaluation of an instance segmentation pipeline that identifies and draws polygons of individual buildings from high resolution satellite and aerial imagery, for the purposes of household mapping. 
 
-If you are looking for a comprehensive intro, try the [notebooks](#notebooks). If you're looking for the code to reproduce the full training routine, look in the [scripts](/scripts/) directory. 
+This repository is a placeholder until the code is made public.  
 
 <img src="./public/accra_preds.png" alt="Example Image"/>
 
@@ -45,7 +45,7 @@ See [here](https://pytorch.org/get-started/previous-versions/) if you are runnin
 
 You can (optionally) configure your root directory by specifying a full absolute file path in an environment file. Create a file called `.env` with the contents:
 ```
-SS_ROOT='/path/to/root/directory/
+SS_ROOT='/path/to/root/directory/'
 ```
 
 Place this file in the root directory for it to take effect. This is only necessary in case the root directory is not already set automatically, such as within a Docker container.
@@ -118,11 +118,11 @@ Stage 4: f4 (H/32 x W/32) ------- [Bottleneck] --------------/
 ## Training Routine
 
 In addition to pre-training of the encoder, the training of the model proceeded in three stages.
-- [Training](./scripts/train.py) the model on the RAMP dataset. Training itself was comprised of two sub-stages: 
+- [Training](./scripts/0_train.py) the model on the RAMP dataset. Training itself was comprised of two sub-stages: 
   - Training the decoder and skip connections, while the encoder weights were kept frozen.
   - Training the full model with unfrozen weights.
-- [Finetuning](./scripts/finetune.py) the model on hand-labeled (ESA supplied) data in the target region. 
-- [Self-learning](./scripts/self_learning.py) using pseudo-labels generated with the fine-tuned model. This loop involved several iterations of progressive fine-tuning and label generation. 
+- [Finetuning](./scripts/3_finetune.py) the model on hand-labeled (ESA supplied) data in the target region. 
+- [Self-learning](./scripts/5_self_learning.py) using pseudo-labels generated with the fine-tuned model. This loop involved several iterations of progressive fine-tuning and label generation. 
 
 <img src="./public/training_schedule.png" alt="Training Routine" width="300"/>
 
@@ -150,17 +150,20 @@ In addition to pre-training of the encoder, the training of the model proceeded 
 
 ## Performance on ESA Dataset
 
+### Model ID
+- 20260417-135731-5_ft
+
 ### Semantic segmentation metrics on the test set:
-- Accuracy: 0.983
-- Balanced Accuracy: 0.900
-- Precision: 0.887
-- Recall: 0.807
+- Accuracy: 0.984
+- Balanced Accuracy: 0.897
+- Precision: 0.906
+- Recall: 0.799
 
 ### Instance segmentation metrics on the test set:
-- mAP@0.5IoU: 0.670
-- Accuracy: 0.471
-- Precision: 0.564
-- Recall: 0.741
+- mAP@0.5IoU: 0.687
+- Accuracy: 0.503
+- Precision: 0.605
+- Recall: 0.750
 
 
 ---
@@ -234,6 +237,7 @@ smart_sampling/
 │   │       └── ... .qgz         # QGIS project file
 │   ├── pre_processed/           # Intermediate processed data
 │   │   └── esa/
+│   │       ├── area_acquisition_dates.csv    # Per-area acquisition dates used for centroid detection_date metadata
 │   │       └── location_name/
 │   │           ├── combined_location_name_rgb.tif     # Mosaicked/corrected RGB image
 │   │           └── combined_location_name_rgb_tta_upsampled.tif # Cached shared-grid TTA mosaic when upsampling is enabled
@@ -285,12 +289,13 @@ smart_sampling/
 │   └── training_time.csv        # Tracks cumulative training time across fits
 │
 ├── scripts/                     # High-level scripts to run training, evaluation, and plotting
-│   ├── train.py                 # Main training script
-│   ├── evaluate.py              # Main evaluation script
-│   ├── finetune.py              # Main finetuning script
-│   ├── preprocess_ESA_imagery.py  # Script for processing raw ESA imagery
-│   ├── self_learning.py         # Script for running self-learning routine
-│   └── load_model_and_plot.py   # Script to plot some example segmentations
+│   ├── 0_train.py               # Main training script
+│   ├── 1_load_model_and_plot.py # Script to plot some example segmentations
+│   ├── 2_preprocess_ESA_imagery.py  # Script for preparing raw ESA imagery for inference and self-learning
+│   ├── 3_finetune.py            # Main finetuning script
+│   ├── 4_evaluate.py            # Main evaluation script
+│   ├── 5_self_learning.py       # Script for running self-learning routine
+│   └── 6_produce_final_artifacts.py # Script for collecting all model predictions in one place
 │
 ├── src/smart_sampling            # Main source code for model fitting and evaluation
 │   ├── data/
@@ -341,6 +346,7 @@ smart_sampling/
 │   │   ├── evaluate_area_map.py # Functions to evaluate over generated maps
 │   │   └── utils.py             # ESA evaluation utilities
 │   ├── inference/
+│   │   ├── centroids.py                  # Turning predicted polygons into centroids
 │   │   ├── tta_inference.py              # Test Time Augmentation inference loops
 │   │   ├── tta_instance_processing.py    # Processing instances from TTA output
 │   │   ├── tta_post.py                   # Post-processing TTA predictions
@@ -373,7 +379,8 @@ smart_sampling/
 │   ├── RAMP_locations.png         # Map of RAMP dataset locations
 │   └── training_schedule.png      # Workflow diagram of the training routine
 │
-├── .env                         # A file where you can set the project root 
+├── .env                         # A file where you can set the project root (not on github)
+├── .env.example                 # Modify this to set the project root (and re-name it to .env)
 ├── requirements.txt             # Full list of dependencies
 ├── pyproject.toml               # Installation file for the python packages 
 ├── README.md                    # You're reading this file
